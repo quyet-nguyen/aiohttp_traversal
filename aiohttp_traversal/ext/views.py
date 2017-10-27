@@ -18,8 +18,62 @@ class View(AbstractView):
         raise NotImplementedError()
 
 
+class WebsocketView(View):
+    """ React type of websocket view
+        Should we support binary type message ?
+    """
+
+    @asyncio.coroutine
+    def on_open(self):
+        """ Callback right after prepare websocket response 
+        """
+        pass
+
+    @asyncio.coroutine
+    def on_close(self):
+        """ Callback before terminate object 
+        """
+        pass
+
+    @asyncio.coroutine
+    def on_message(self, message):
+        """ Callback when receive a message
+        """
+        pass
+
+    @asyncio.coroutine
+    def __call__(self):
+
+        #Prepare the response
+        self.ws = WebSocketResponse()
+        ok, protocol = self.ws.can_prepare(request)
+        if not ok:
+            return Response(
+                body="%s was meant to be called through ws protocol " % url, 
+                content_type='text/plain')
+
+        yield from self.ws.prepare(request)
+
+        yield from self.on_open()
+
+        async for msg in self.ws:
+            if msg.type == WSMsgType.TEXT:
+                #Normal data ?
+                yield from self.on_message(msg.data)
+            elif msg.type == aiohttp.WSMsgType.ERROR:
+                #Exception
+                print('ws connection closed with exception %s' %
+                    self.ws.exception())
+                break
+
+        yield from self.on_close()
+
+        return self.ws
+
+
+
 class MethodsView(View):
-    methods = frozenset()  # {'get', 'post', 'put', 'patch', 'delete', 'option'}
+    methods = frozenset(('get', 'post', 'put', 'patch', 'delete', 'option'))  # {'get', 'post', 'put', 'patch', 'delete', 'option'}
 
     @asyncio.coroutine
     def __call__(self):
@@ -32,27 +86,27 @@ class MethodsView(View):
 
     @asyncio.coroutine
     def get(self):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @asyncio.coroutine
     def post(self):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @asyncio.coroutine
     def put(self):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @asyncio.coroutine
     def patch(self):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @asyncio.coroutine
     def delete(self):
-        raise NotImplementedError
+        raise NotImplementedError()
 
     @asyncio.coroutine
     def option(self):
-        raise NotImplementedError
+        raise NotImplementedError()
 
 
 class RESTView(MethodsView):
