@@ -46,13 +46,13 @@ class WebsocketView(View):
 
         #Prepare the response
         self.ws = WebSocketResponse()
-        ok, protocol = self.ws.can_prepare(request)
+        ok, protocol = self.ws.can_prepare(self.request)
         if not ok:
             return Response(
-                body="%s was meant to be called through ws protocol " % url, 
+                body="%s was meant to be called through ws protocol " % self.request.url, 
                 content_type='text/plain')
 
-        yield from self.ws.prepare(request)
+        yield from self.ws.prepare(self.request)
 
         yield from self.on_open()
 
