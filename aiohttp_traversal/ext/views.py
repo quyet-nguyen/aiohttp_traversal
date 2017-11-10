@@ -1,7 +1,8 @@
 import json
 import asyncio
 
-from aiohttp.web import Response, StreamResponse
+from aiohttp import WSMsgType
+from aiohttp.web import Response, StreamResponse, WebSocketResponse
 from aiohttp.web import HTTPMethodNotAllowed
 
 from aiohttp_traversal.abc import AbstractView
@@ -13,8 +14,7 @@ class View(AbstractView):
         self.resource = resource
         self.tail = tail
 
-    @asyncio.coroutine
-    def __call__(self):
+    async def __call__(self):
         raise NotImplementedError()
 
 
@@ -23,26 +23,27 @@ class WebsocketView(View):
         Should we support binary type message ?
     """
 
-    @asyncio.coroutine
-    def on_open(self):
+    async def on_open(self):
         """ Callback right after prepare websocket response 
         """
         pass
 
-    @asyncio.coroutine
-    def on_close(self):
+    async def on_close(self):
         """ Callback before terminate object 
         """
         pass
 
-    @asyncio.coroutine
-    def on_message(self, message):
+    async def on_message(self, message):
         """ Callback when receive a message
         """
         pass
 
-    @asyncio.coroutine
-    def __call__(self):
+    async def send(self,message):
+        """ Send message back to client
+        """
+        await self.ws.send_str(message)
+
+    async def __call__(self):
 
         #Prepare the response
         self.ws = WebSocketResponse()
@@ -52,21 +53,22 @@ class WebsocketView(View):
                 body="%s was meant to be called through ws protocol " % self.request.url, 
                 content_type='text/plain')
 
-        yield from self.ws.prepare(self.request)
+        await self.ws.prepare(self.request)
 
-        yield from self.on_open()
+        await self.on_open()
 
-        async for msg in self.ws:
-            if msg.type == WSMsgType.TEXT:
-                #Normal data ?
-                yield from self.on_message(msg.data)
-            elif msg.type == aiohttp.WSMsgType.ERROR:
-                #Exception
-                print('ws connection closed with exception %s' %
-                    self.ws.exception())
-                break
-
-        yield from self.on_close()
+        try:
+            async for msg in self.ws:
+                if msg.type == WSMsgType.TEXT:
+                    #Normal data ?
+                    await self.on_message(msg.data)
+                elif msg.type == WSMsgType.ERROR:
+                    #Exception
+                    print('ws connection closed with exception %s' %
+                        self.ws.exception())
+                    break
+        finally:
+            await self.on_close()
 
         return self.ws
 
@@ -75,37 +77,30 @@ class WebsocketView(View):
 class MethodsView(View):
     methods = frozenset(('get', 'post', 'put', 'patch', 'delete', 'option'))  # {'get', 'post', 'put', 'patch', 'delete', 'option'}
 
-    @asyncio.coroutine
-    def __call__(self):
+    async def __call__(self):
         method = self.request.method.lower()
 
         if method in self.methods:
-            return (yield from getattr(self, method)())
+            return (await getattr(self, method)())
         else:
             raise HTTPMethodNotAllowed(method, self.methods)
 
-    @asyncio.coroutine
-    def get(self):
+    async def get(self):
         raise NotImplementedError()
 
-    @asyncio.coroutine
-    def post(self):
+    async def post(self):
         raise NotImplementedError()
 
-    @asyncio.coroutine
-    def put(self):
+    async def put(self):
         raise NotImplementedError()
 
-    @asyncio.coroutine
-    def patch(self):
+    async def patch(self):
         raise NotImplementedError()
 
-    @asyncio.coroutine
-    def delete(self):
+    async def delete(self):
         raise NotImplementedError()
 
-    @asyncio.coroutine
-    def option(self):
+    async def option(self):
         raise NotImplementedError()
 
 
@@ -118,9 +113,8 @@ class RESTView(MethodsView):
         """
         return json.dumps(data).encode('utf8')
 
-    @asyncio.coroutine
-    def __call__(self):
-        data = yield from super().__call__()
+    async def __call__(self):
+        data = await super().__call__()
 
         if isinstance(data, StreamResponse):
             return data
